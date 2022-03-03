@@ -6,6 +6,6 @@ public class Application {
      * Launches the application
      */
     public static void main(String[] args) {
-        new DeploymentManager().run();
+        new DeploymentHelper().run();
     }
 }

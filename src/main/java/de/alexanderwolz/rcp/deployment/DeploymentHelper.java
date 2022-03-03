@@ -33,7 +33,7 @@ import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.swt.widgets.Text;
 
-public class DeploymentManager {
+public class DeploymentHelper {
 
     private final String DEFAULT_LOCATION = System.getProperty("user.home");
     private final String MANIFEST = "/META-INF/MANIFEST.MF";
@@ -48,10 +48,10 @@ public class DeploymentManager {
     private Button revertButton;
     private Button applyButton;
 
-    public DeploymentManager() {
+    public DeploymentHelper() {
         display = new Display();
         shell = new Shell(display);
-        shell.setText("RCP Plugin Deployment Manager");
+        shell.setText("RCP Plugin Deployment Helper");
         shell.setSize(525, 500);
     }
 
