@@ -1,2 +1,9 @@
-# rcp_deployment_helper
-RCP Plugin Deployment Helper Tool
+# RCP Plugin Deployment Helper Tool
+
+## Build
+
+```mvn clean package```
+
+## Run on macOS
+
+set VM args: ```-XstartOnFirstThread```

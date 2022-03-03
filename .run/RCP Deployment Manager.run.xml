@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="RCP Deployment Manager" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="de.alexanderwolz.rcp.deployment.Application" />
+    <module name="de.alexanderwolz.rcp.deployment" />
+    <option name="VM_PARAMETERS" value="-XstartOnFirstThread" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
