@@ -1,19 +1,15 @@
-package de.alexanderwolz.rcp.deployment;
+package de.alexanderwolz.rcp.deployment.view;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
+import de.alexanderwolz.rcp.deployment.controller.PluginController;
 import de.alexanderwolz.rcp.deployment.model.Plugin;
 import de.alexanderwolz.rcp.deployment.model.Version;
 
+import de.alexanderwolz.rcp.deployment.util.PluginUtil;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
@@ -33,33 +29,44 @@ import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.swt.widgets.Text;
 
-public class DeploymentHelper {
+public class MainView {
 
-    private final String DEFAULT_LOCATION = System.getProperty("user.home");
-    private final String MANIFEST = "/META-INF/MANIFEST.MF";
-    private final String BUNDLE_VERSION = "Bundle-Version:";
-
-    private String workspace = DEFAULT_LOCATION;
-    private Map<String, Plugin> plugins = new TreeMap<>();
+    private final PluginController controller = new PluginController();
 
     private final Display display;
     private final Shell shell;
     private Table table;
+    private Text workspaceText;
     private Button revertButton;
     private Button applyButton;
 
-    public DeploymentHelper() {
+    public MainView() {
         display = new Display();
         shell = new Shell(display);
         shell.setText("RCP Plugin Deployment Helper");
-        shell.setSize(525, 500);
+        shell.setSize(1024, 768);
+        controller.addListener(new PluginController.IEventListener() {
+            @Override
+            public void onWorkspaceChanged(String workspace) {
+                Display.getDefault().asyncExec(() -> initializeValues());
+            }
+            @Override
+            public void onManifestException(File file) {
+                Display.getDefault().asyncExec(() -> {
+                    MessageBox box = new MessageBox(shell, SWT.ERROR);
+                    box.setMessage("Corrupt Manifest for file '" + file.getName() + "'");
+                    box.setText("Error");
+                    box.open();
+                });
+            }
+        });
     }
 
     public void run() {
         createMenu();
         createContents();
+        initializeValues();
         shell.open();
-        initialize();
         while (!shell.isDisposed()) {
             if (!display.readAndDispatch()) {
                 display.sleep();
@@ -78,7 +85,7 @@ public class DeploymentHelper {
 
         MenuItem reloadItem = new MenuItem(fileMenu, SWT.PUSH);
         reloadItem.setText("Reload Workspace");
-        reloadItem.addListener(SWT.Selection, event -> initialize());
+        reloadItem.addListener(SWT.Selection, event -> controller.reload());
 
         MenuItem exitItem = new MenuItem(fileMenu, SWT.PUSH);
         exitItem.setText("Exit");
@@ -115,26 +122,20 @@ public class DeploymentHelper {
         GridData gridData = new GridData(GridData.FILL_HORIZONTAL);
         gridData.horizontalSpan = 4;
 
-        final Text text = new Text(shell, SWT.BORDER);
-        text.setLayoutData(gridData);
-        text.setText(DEFAULT_LOCATION);
-        text.addListener(SWT.DefaultSelection, event -> {
-            // save workspaceLocation
-            workspace = text.getText();
-            initialize();
-        });
+        workspaceText = new Text(shell, SWT.BORDER);
+        workspaceText.setLayoutData(gridData);
+        workspaceText.setEditable(false);
+        workspaceText.setText(controller.getWorkspace());
 
         Button workspaceButton = new Button(shell, SWT.PUSH);
         workspaceButton.setText("Browse...");
         workspaceButton.addListener(SWT.Selection, event -> {
             DirectoryDialog dialog = new DirectoryDialog(shell);
-            dialog.setFilterPath(text.getText());
+            dialog.setFilterPath(workspaceText.getText());
             dialog.setMessage("Choose Workspace");
             String dir = dialog.open();
             if (dir != null) {
-                text.setText(dir);
-                workspace = dir;
-                initialize();
+                controller.setWorkspace(dir);
             }
         });
 
@@ -149,6 +150,7 @@ public class DeploymentHelper {
         Button incrementMajor = new Button(incGroup, SWT.PUSH);
         incrementMajor.setText("Major");
         incrementMajor.addListener(SWT.Selection, event -> {
+            Map<String, Plugin> plugins = controller.getPlugins();
             for (TableItem item : table.getItems()) {
                 if (item.getChecked()) {
                     Plugin plugin = plugins.get(item.getText(1));
@@ -165,6 +167,7 @@ public class DeploymentHelper {
         Button incrementMinor = new Button(incGroup, SWT.PUSH);
         incrementMinor.setText("Minor");
         incrementMinor.addListener(SWT.Selection, event -> {
+            Map<String, Plugin> plugins = controller.getPlugins();
             for (TableItem item : table.getItems()) {
                 if (item.getChecked()) {
                     Plugin plugin = plugins.get(item.getText(1));
@@ -181,6 +184,7 @@ public class DeploymentHelper {
         Button incrementMicro = new Button(incGroup, SWT.PUSH);
         incrementMicro.setText("Micro");
         incrementMicro.addListener(SWT.Selection, event -> {
+            Map<String, Plugin> plugins = controller.getPlugins();
             for (TableItem item : table.getItems()) {
                 if (item.getChecked()) {
                     Plugin plugin = plugins.get(item.getText(1));
@@ -210,6 +214,7 @@ public class DeploymentHelper {
         Button versionButton = new Button(versGroup, SWT.PUSH);
         versionButton.setText("set Version");
         versionButton.addListener(SWT.Selection, event -> {
+            Map<String, Plugin> plugins = controller.getPlugins();
             for (TableItem item : table.getItems()) {
                 if (item.getChecked()) {
                     Plugin plugin = plugins.get(item.getText(1));
@@ -262,18 +267,7 @@ public class DeploymentHelper {
         revertButton.setEnabled(false);
         revertButton.setLayoutData(gridData);
         revertButton.addListener(SWT.Selection, event -> {
-
-            Map<String, Plugin> workspacePlugins = loadPluginsFromWorkspace();
-
-            for (Plugin plugin : plugins.values()) {
-                if (plugin.isModified()) {
-                    Plugin workspacePlugin = workspacePlugins.get(plugin.getName());
-                    if (workspacePlugin != null) {
-                        plugin.setVersion(workspacePlugin.getVersion());
-                        plugin.setModified(false);
-                    }
-                }
-            }
+            controller.revert();
             updateTable();
             revertButton.setEnabled(false);
             applyButton.setEnabled(false);
@@ -286,9 +280,9 @@ public class DeploymentHelper {
         applyButton.addListener(SWT.Selection, event -> {
             List<Plugin> failedPlugins = new ArrayList<>();
             int count = 0;
-            for (Plugin plugin : plugins.values()) {
+            for (Plugin plugin : controller.getPlugins().values()) {
                 if (plugin.isModified()) {
-                    boolean saved = saveVersionToManifest(plugin);
+                    boolean saved = controller.saveVersionToManifest(plugin);
                     if (!saved) {
                         failedPlugins.add(plugin);
                     }
@@ -320,19 +314,24 @@ public class DeploymentHelper {
 
     }
 
-    /**
-     * loads all bundles from workspace and fills Table
-     */
-    private void initialize() {
-        plugins = loadPluginsFromWorkspace();
+    private void updateTable() {
+        for (TableItem item : table.getItems()) {
+            Plugin plugin = (Plugin) item.getData();
+            item.setText(1, plugin.getName());
+            item.setText(2, PluginUtil.getVersionString(plugin.getVersion()));
+        }
+    }
 
+    private void initializeValues() {
         table.removeAll();
 
-        for (Plugin plugin : plugins.values()) {
+        workspaceText.setText(controller.getWorkspace());
+
+        for (Plugin plugin : controller.getPlugins().values()) {
             TableItem item = new TableItem(table, SWT.NONE);
             item.setData(plugin);
             item.setText(1, plugin.getName());
-            item.setText(2, getVersionString(plugin.getVersion()));
+            item.setText(2, PluginUtil.getVersionString(plugin.getVersion()));
         }
 
         // pack all columns except the first one
@@ -342,103 +341,5 @@ public class DeploymentHelper {
 
         revertButton.setEnabled(false);
         applyButton.setEnabled(false);
-    }
-
-    private void updateTable() {
-        for (TableItem item : table.getItems()) {
-            Plugin plugin = (Plugin) item.getData();
-            item.setText(1, plugin.getName());
-            item.setText(2, getVersionString(plugin.getVersion()));
-        }
-    }
-
-    private String getVersionString(Version version) {
-        String s = version.getMajor() + "." + version.getMinor() + "." + version.getMicro();
-        if (version.getQualifier() != null) {
-            s += "." + version.getQualifier();
-        }
-        return s;
-    }
-
-    /**
-     * searches for files within specified location and puts results to the
-     * previously cleaned map
-     */
-    private Map<String, Plugin> loadPluginsFromWorkspace() {
-        File directory = new File(workspace);
-        Map<String, Plugin> plugins = new TreeMap<>();
-        if (directory.exists() && directory.isDirectory()) {
-            File[] files = directory.listFiles();
-            assert files != null;
-            for (File file : files) {
-                // check if file-directory contains manifest
-                File manifest = new File(file.getAbsoluteFile() + MANIFEST);
-                if (manifest.exists()) {
-                    try {
-                        Plugin plugin = new Plugin(file.getName(), getVersionFromManifest(manifest));
-                        plugins.put(plugin.getName(), plugin);
-                    } catch (Exception e) {
-                        // corrupt manifest file or invalid version
-                        MessageBox box = new MessageBox(shell, SWT.ERROR);
-                        box.setMessage("Corrupt Manifest for file '" + file.getName() + "'");
-                        box.setText("Error");
-                        box.open();
-                    }
-                }
-            }
-        }
-        return plugins;
-    }
-
-    /**
-     * returns the Version from specified Manifest.MF
-     *
-     * @param manifest , the MANIFEST.MF
-     * @return Version or null if not found
-     */
-    private Version getVersionFromManifest(File manifest) throws Exception {
-        try (BufferedReader reader = new BufferedReader(new FileReader(manifest))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.contains(BUNDLE_VERSION)) {
-                    return new Version(line.substring(BUNDLE_VERSION.length()).trim());
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * saves the version in Manifest.MF of given bundle
-     */
-    private boolean saveVersionToManifest(Plugin plugin) {
-
-        File manifest = new File(workspace + "/" + plugin.getName() + MANIFEST);
-        if (manifest.exists()) {
-            StringBuilder content = new StringBuilder();
-            try {
-                BufferedReader reader = new BufferedReader(new FileReader(manifest));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.contains(BUNDLE_VERSION)) {
-                        line = BUNDLE_VERSION + " " + getVersionString(plugin.getVersion());
-                    }
-                    content.append(line).append('\n');
-                }
-                reader.close();
-
-                // write to file
-                BufferedWriter writer = new BufferedWriter(new FileWriter(manifest));
-                writer.write(content.toString());
-                writer.flush();
-                writer.close();
-                return true;
-
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        return false;
     }
 }
